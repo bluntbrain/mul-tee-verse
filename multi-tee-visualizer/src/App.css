@@ -1,31 +1,9 @@
 .App {
   text-align: center;
-}
-
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
-
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
-}
-
-.App-link {
-  color: #61dafb;
+  width: 100%;
+  height: 100%;
+  background-color: #000000;
+  color: #a0a0a0;
 }
 
 @keyframes App-logo-spin {
@@ -35,4 +13,85 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+.loading-spinner {
+  display: inline-block;
+  font-size: 24px;
+  margin-right: 10px;
+  animation: spin 1s linear infinite;
+  color: #61dafb;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+button, input, select, textarea {
+  background-color: #121212;
+  color: #a0a0a0;
+  border: 1px solid #333;
+}
+
+button:hover {
+  background-color: #1a1a1a;
+}
+
+a {
+  color: #61dafb;
+}
+
+a:hover {
+  color: #8bdfff;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  background-color: #000000;
+  color: #a0a0a0;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+.node-tooltip {
+  position: absolute;
+  padding: 8px 12px;
+  border-radius: 4px;
+  background-color: rgba(0, 0, 0, 0.9);
+  color: #a0a0a0;
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 1000;
+  white-space: nowrap;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+  border: 1px solid #333;
+}
+
+.status-badge {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 5px;
+}
+
+.status-healthy {
+  background-color: #33CC99;
+}
+
+.status-verifying {
+  background-color: #FFAA00;
+}
+
+.status-compromised {
+  background-color: #FF3333;
 }
