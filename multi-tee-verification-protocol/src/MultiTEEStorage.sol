@@ -19,6 +19,8 @@ contract MultiTEEStorage {
     
     // State variables
     mapping(string => TEEData) internal teeRecords;
+    string[] internal teeIds; // Array of all TEE IDs
+    mapping(string => uint256) internal teeIdToIndex; // Mapping from TEE ID to its index in the array
     
     // Events
     event TEEStored(string indexed teeId, address indexed teeAddress);
@@ -62,4 +64,21 @@ contract MultiTEEStorage {
     function teeIdExists(string memory _teeId) external view returns (bool) {
         return teeRecords[_teeId].teeAddress != address(0);
     }
+    
+    /**
+     * @dev Get all TEE IDs
+     * @return Array of all TEE IDs
+     */
+    function getAllTEEIds() external view returns (string[] memory) {
+        return teeIds;
+    }
+    
+    /**
+     * @dev Get count of TEEs
+     * @return Total number of TEEs
+     */
+    function getTEECount() external view returns (uint256) {
+        return teeIds.length;
+    }
+    
 }

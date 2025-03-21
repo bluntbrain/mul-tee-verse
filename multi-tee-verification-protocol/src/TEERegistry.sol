@@ -47,6 +47,10 @@ contract TEERegistry is MultiTEEStorage, Ownable {
             teeData: _teeData
         });
         
+        // Add the TEE ID to the array
+        teeIds.push(_teeId);
+        teeIdToIndex[_teeId] = teeIds.length - 1;
+        
         emit TEEAdded(_teeId, _teeAddress);
     }
     
@@ -99,7 +103,23 @@ contract TEERegistry is MultiTEEStorage, Ownable {
         onlyOwner
         teeExists(_teeId)
     {
-        // Just delete from the mapping
+        // Remove the TEE ID from the array directly in this contract
+        uint256 indexToRemove = teeIdToIndex[_teeId];
+        uint256 lastIndex = teeIds.length - 1;
+        
+        // If the TEE to remove is not the last one
+        if (indexToRemove != lastIndex) {
+            // Move the last TEE to the position of the TEE to remove
+            string memory lastTeeId = teeIds[lastIndex];
+            teeIds[indexToRemove] = lastTeeId;
+            teeIdToIndex[lastTeeId] = indexToRemove;
+        }
+        
+        // Remove the last element
+        teeIds.pop();
+        delete teeIdToIndex[_teeId];
+        
+        // Delete from the mapping
         delete teeRecords[_teeId];
         
         emit TEERemoved(_teeId);
