@@ -6,6 +6,38 @@ import ForceGraph from 'r3f-forcegraph';
 import LogViewer from './components/LogViewer';
 import { blockchainService } from './services/blockchainService';
 import './App.css';
+import * as THREE from 'three';
+
+// import TEE node images
+import secureNodeImg from './assets/secure_TEE.png';
+import warningNodeImg from './assets/warning_TEE.png';
+import anomalyNodeImg from './assets/anomaly_TEE.png';
+
+// preload images for better performance
+const nodeImages = {
+  secure: secureNodeImg,
+  warning: warningNodeImg,
+  anomaly: anomalyNodeImg
+};
+
+// create texture loader cache
+const textureLoader = new THREE.TextureLoader();
+const textureCache = {};
+
+// preload textures - use immediate loading to prevent issues
+Object.entries(nodeImages).forEach(([key, src]) => {
+  console.log(`[App.js] Loading texture for ${key} status`);
+  const texture = textureLoader.load(src, 
+    // onLoad callback
+    (loaded) => console.log(`[App.js] Successfully loaded texture for ${key}`),
+    // onProgress callback
+    undefined,
+    // onError callback
+    (err) => console.error(`[App.js] Error loading texture for ${key}:`, err)
+  );
+  texture.colorSpace = THREE.SRGBColorSpace;
+  textureCache[key] = texture;
+});
 
 const AppContainer = styled.div`
   display: flex;
@@ -137,6 +169,33 @@ const ForceGraphWithUpdates = ({ data, graphConfig }) => {
       {...graphConfig}
     />
   );
+};
+
+// helper function to create text canvas for node labels
+const createTextCanvas = (text) => {
+  // use a memoization approach for better performance
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  const fontSize = 24;
+  ctx.font = `${fontSize}px Arial`;
+  
+  // set canvas dimensions slightly larger than text
+  const textWidth = ctx.measureText(text).width;
+  canvas.width = textWidth + 10;
+  canvas.height = fontSize + 8;
+  
+  // fill background (transparent)
+  ctx.fillStyle = 'rgba(0,0,0,0)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  // draw text
+  ctx.font = `${fontSize}px Arial`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+  
+  return canvas;
 };
 
 function App() {
@@ -290,50 +349,95 @@ function App() {
   }, [handleNodeHover]);
   
   // configure the force graph
-  const graphConfig = useMemo(() => ({
-    nodeRelSize: 10,
-    nodeResolution: 16,
-    nodeColor: node => {
-      if (!node || !node.status) return '#00FFCC'; // Default color if status is missing
-      if (node.status === 'compromised') return '#FF4444';
-      if (node.status === 'verifying') return '#FFCC00';
-      return highlightNodes.has(node) ? 
-        (node === hoverNode ? '#FF7777' : '#FFDD77') : 
-        '#00FFCC';
-    },
-    linkWidth: link => highlightLinks.has(link) ? 4 : 1.5,
-    linkColor: link => highlightLinks.has(link) ? '#FFAA00' : '#FFFFFF',
-    linkOpacity: 0.8,
-    linkDirectionalParticles: link => highlightLinks.has(link) ? 6 : 0,
-    linkDirectionalParticleWidth: 3,
-    linkDirectionalParticleSpeed: 0.01,
-    linkDirectionalParticleColor: link => {
-      if (!link || !link.source || !link.target) return '#00FFCC';
-      return link.source?.status === 'compromised' || link.target?.status === 'compromised' 
-        ? '#FF4444' : '#00FFCC';
-    },
-    nodeLabel: node => {
-      if (!node) return '';
-      if (!node.status) return node.name || 'Unknown Node';
-      return `${node.name || 'Node'} - ${node.status.toUpperCase()}`;
-    },
-    onNodeHover: handleNodeHover,
-    onLinkHover: handleLinkHover,
-    onNodeClick: handleNodeClick,
-    numDimensions: 3,
-    cooldownTicks: 100,
-    cooldownTime: 1000,
-    d3AlphaDecay: 0.01,
-    d3VelocityDecay: 0.3
-  }), [highlightNodes, highlightLinks, hoverNode, handleNodeHover, handleLinkHover, handleNodeClick]);
+  const graphConfig = useMemo(() => {
+    const nodeRelSize = 0.01; // smaller sprites
+    
+    return {
+      nodeRelSize,
+      nodeResolution: 16,
+      linkWidth: link => highlightLinks.has(link) ? 1 : 1,
+      linkColor: link => highlightLinks.has(link) ? '#FFAA00' : '#FFFFFF',
+      linkOpacity: 0.4,
+      linkDirectionalParticles: link => highlightLinks.has(link) ? 4 : 0,
+      linkDirectionalParticleWidth: 2,
+      linkDirectionalParticleSpeed: 0.01,
+      linkDirectionalParticleColor: link => {
+        if (!link || !link.source || !link.target) return '#00FFCC';
+        return link.source?.status === 'anomaly' || link.target?.status === 'anomaly' 
+          ? '#FF4444' : '#00FFCC';
+      },
+      nodeLabel: node => {
+        if (!node) return '';
+        if (!node.status) return node.name || 'Unknown Node';
+        return `${node.name || 'Node'} - ${node.status.toUpperCase()}`;
+      },
+      // use sprite images for nodes
+      nodeThreeObject: node => {
+        if (!node || !node.status) return null;
+        
+        const status = node.status;
+        console.log(`[App.js] Rendering node with status: ${status}`);
+        
+        let texture;
+        
+        // use cached texture if available
+        if (textureCache[status]) {
+          texture = textureCache[status];
+          console.log(`[App.js] Using ${status} texture for node ${node.id}`);
+        } else {
+          // fallback to a default texture or color
+          const defaultStatus = 'secure';
+          texture = textureCache[defaultStatus];
+          console.warn(`[App.js] No texture for status: ${status}, using default`);
+        }
+        
+        // create sprite with just the image
+        const material = new THREE.SpriteMaterial({ 
+          map: texture,
+          transparent: true,
+          opacity: highlightNodes.has(node) ? 1.0 : 0.9
+        });
+        
+        const sprite = new THREE.Sprite(material);
+        sprite.scale.set(14, 14, 1); // Slightly smaller to avoid any surrounding elements
+        
+        // add a smaller text label above the node
+        const labelSprite = new THREE.Sprite(
+          new THREE.SpriteMaterial({
+            map: new THREE.CanvasTexture(createTextCanvas(node.name || 'Node')),
+            transparent: true
+          })
+        );
+        labelSprite.scale.set(12, 6, 1);
+        labelSprite.position.y = 12;
+        
+        // create a group to hold ONLY the sprite and label
+        const group = new THREE.Group();
+        group.add(sprite);
+        group.add(labelSprite);
+        
+        return group;
+      },
+      nodeThreeObjectExtend: true,
+      d3AlphaDecay: 0.01,
+      d3VelocityDecay: 0.1,
+      linkDistance: 80,
+      onNodeHover: handleNodeHover,
+      onLinkHover: handleLinkHover,
+      onNodeClick: handleNodeClick,
+      numDimensions: 3,
+      cooldownTicks: 100,
+      cooldownTime: 1000
+    };
+  }, [highlightNodes, highlightLinks, hoverNode, handleNodeHover, handleLinkHover, handleNodeClick]);
   
   return (
     <AppContainer>
       <Header>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <Title>Multi-TEE Blockchain Visualizer</Title>
-            <Subtitle>3D visualization of trusted execution environments</Subtitle>
+            <Title>Mul<span style={{ color: '#33CC99' }}>TEE</span>verse</Title>
+            <Subtitle>3D Multi-TEE Blockchain Visualizer</Subtitle>
           </div>
           
           {latestBlock && (

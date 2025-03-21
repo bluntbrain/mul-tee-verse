@@ -84,14 +84,14 @@ code {
   margin-right: 5px;
 }
 
-.status-healthy {
+.status-secure {
   background-color: #33CC99;
 }
 
-.status-verifying {
+.status-warning {
   background-color: #FFAA00;
 }
 
-.status-compromised {
+.status-anomaly {
   background-color: #FF3333;
 }

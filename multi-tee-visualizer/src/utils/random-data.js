@@ -4,89 +4,50 @@
  */
 
 /**
- * generate a random tree graph with a specified number of nodes
+ * generate a graph with exactly 5 nodes with specified statuses:
+ * - 1 anomaly node
+ * - 2 secure nodes
+ * - 2 warning nodes
+ * 
+ * @returns {Object} graph data with nodes and links
  */
-export const genRandomTree = (nodeCount = 5) => {
-  // always generate exactly 5 nodes regardless of input
-  const fixedNodeCount = 5;
-  const nodes = [];
+export const genRandomTree = () => {
+  // fixed node count and status distribution
+  const nodes = [
+    { id: 'node0', name: 'TEE Node 0', status: 'secure', value: 15 },
+    { id: 'node1', name: 'TEE Node 1', status: 'secure', value: 15 },
+    { id: 'node2', name: 'TEE Node 2', status: 'warning', value: 15 },
+    { id: 'node3', name: 'TEE Node 3', status: 'warning', value: 15 },
+    { id: 'node4', name: 'TEE Node 4', status: 'anomaly', value: 15 }
+  ];
+  
+  console.log('[random-data.js] Generated nodes with statuses:', 
+    nodes.map(n => `${n.id}: ${n.status}`).join(', '));
+  
+  // create links between all nodes
   const links = [];
-  // define specific statuses for each node to ensure they all have valid values
-  const statuses = ['normal', 'normal', 'normal', 'verifying', 'compromised'];
-  
-  // create nodes with unique IDs and specific statuses
-  for (let i = 0; i < fixedNodeCount; i++) {
-    nodes.push({
-      id: `node${i}`,
-      name: `TEE Node ${i}`,
-      status: statuses[i % statuses.length], // Ensure we don't go out of bounds
-      value: Math.random() * 20 + 10
-    });
-  }
-  
-  // create a fully connected circular structure
-  // each node connects to all other nodes
-  for (let i = 0; i < fixedNodeCount; i++) {
-    for (let j = i + 1; j < fixedNodeCount; j++) {
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
       links.push({
-        source: `node${i}`,
-        target: `node${j}`,
-        value: Math.random() * 10 + 5
+        source: nodes[i].id,
+        target: nodes[j].id,
+        value: 10
       });
     }
   }
-  
-  // verify all nodes have the required properties
-  nodes.forEach(node => {
-    if (!node.status) {
-      console.warn(`[random-data.js] Node ${node.id} missing status, setting to normal`);
-      node.status = 'normal';
-    }
-  });
   
   return { nodes, links };
 };
 
 /**
- * generate a random network graph with a specified number of nodes
+ * generate a network graph with exactly 5 nodes with specified statuses:
+ * - 1 anomaly node
+ * - 2 secure nodes
+ * - 2 warning nodes
+ * 
+ * @returns {Object} graph data with nodes and links
  */
-export const genRandomNetwork = (nodeCount = 5) => {
-  // always generate exactly 5 nodes regardless of input
-  const fixedNodeCount = 5;
-  const nodes = [];
-  const links = [];
-  // define specific statuses for each node to ensure they all have valid values
-  const statuses = ['normal', 'normal', 'normal', 'verifying', 'compromised'];
-  
-  // create nodes with unique IDs and specific statuses
-  for (let i = 0; i < fixedNodeCount; i++) {
-    nodes.push({
-      id: `node${i}`,
-      name: `TEE Node ${i}`,
-      status: statuses[i % statuses.length], // Ensure we don't go out of bounds
-      value: Math.random() * 20 + 10
-    });
-  }
-  
-  // create a fully connected network (each node connects to all others)
-  for (let i = 0; i < fixedNodeCount; i++) {
-    for (let j = i + 1; j < fixedNodeCount; j++) {
-      // always create links between all nodes
-      links.push({
-        source: `node${i}`,
-        target: `node${j}`,
-        value: Math.random() * 10 + 5
-      });
-    }
-  }
-  
-  // verify all nodes have the required properties
-  nodes.forEach(node => {
-    if (!node.status) {
-      console.warn(`[random-data.js] Node ${node.id} missing status, setting to normal`);
-      node.status = 'normal';
-    }
-  });
-  
-  return { nodes, links };
+export const genRandomNetwork = () => {
+  // same implementation as genRandomTree for consistent behavior
+  return genRandomTree();
 }; 

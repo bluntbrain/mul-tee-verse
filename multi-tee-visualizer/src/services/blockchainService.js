@@ -28,14 +28,17 @@ export const blockchainService = {
         cachedGraphData.nodes.forEach(node => {
           // normalize node status
           if (!node.status) {
-            console.warn(`[blockchainService] Node ${node.id} missing status, setting to normal`);
-            node.status = 'normal';
+            console.warn(`[blockchainService] Node ${node.id} missing status, setting to secure`);
+            node.status = 'secure';
           }
           
-          // convert 'normal' status to 'healthy' for UI consistency if needed
-          if (node.status === 'normal') {
-            node.status = 'normal'; 
+          // ensure status is one of: secure, warning, anomaly
+          if (!['secure', 'warning', 'anomaly'].includes(node.status)) {
+            console.warn(`[blockchainService] Node ${node.id} has invalid status: ${node.status}, setting to secure`);
+            node.status = 'secure';
           }
+          
+          console.log(`[blockchainService] Node ${node.id} has status: ${node.status}`);
         });
       }
     }
