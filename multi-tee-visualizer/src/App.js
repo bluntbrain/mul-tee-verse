@@ -437,7 +437,7 @@ function App() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <Title>Mul<span style={{ color: '#33CC99' }}>TEE</span>verse</Title>
-            <Subtitle>3D Multi-TEE Blockchain Visualizer</Subtitle>
+            <Subtitle>3D Multi-TEE Distributed Network Visualizer</Subtitle>
           </div>
           
           {latestBlock && (
