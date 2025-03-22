@@ -10,4 +10,4 @@ export const ATTESATION_VERIFICATION_RECORD_ABI = require("../abi/AttestationVer
 export const RPC_URL_SEPOLIA = "https://eth-sepolia.g.alchemy.com/v2/t4Tylj9lN2WwI_vMZVsg46Uc7yiqyDjZ";
 
 // API Endpoints
-export const HACK_TEE_API_ENDPOINT = "https://api.multeeverse.io/hack-tee"; 
+export const HACK_TEE_API_ENDPOINT = "https://d3d457f80a1e5c9f51c27dcc7125ba21f2418e08-8080.dstack-prod5.phala.network/toggle-anomaly"; 

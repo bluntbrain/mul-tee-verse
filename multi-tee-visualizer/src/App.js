@@ -54,7 +54,8 @@ const Header = styled.header`
   background-color: #050510;
   color: #a0a0a0;
   padding: 12px 24px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+  border-bottom: 1px solid #111122;
   z-index: 100;
 `;
 
@@ -105,6 +106,10 @@ const LogSection = styled.section`
   flex: 1;
   min-width: 350px;
   height: 100%;
+  background-color: #000000; 
+  border-radius: 8px;
+  border: 1px solid #111111;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
   
   @media (max-width: 768px) {
     height: 40%;
@@ -135,7 +140,8 @@ const Footer = styled.footer`
   padding: 8px 24px;
   font-size: 12px;
   text-align: center;
-  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.7);
+  border-top: 1px solid #111122;
   z-index: 100;
 `;
 
@@ -154,8 +160,33 @@ const LoadingOverlay = styled.div`
   font-size: 1.2rem;
 `;
 
+const CountdownContainer = styled.div`
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background-color: rgba(5, 5, 16, 0.8);
+  padding: 8px 12px;
+  border-radius: 4px;
+  color: #61dafb;
+  font-size: 14px;
+  z-index: 9;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  user-select: none;
+`;
+
+const CountdownValue = styled.span`
+  font-weight: bold;
+  margin: 0 4px;
+`;
+
 const HackButton = styled.div`
-  position: relative;
+  position: absolute;
+  z-index: 20;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
   display: inline-block;
 `;
 
@@ -168,6 +199,7 @@ const HackTrigger = styled.button`
   border-radius: 4px;
   cursor: pointer;
   transition: background-color 0.3s;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5);
 
   &:hover {
     background-color: #FF6666;
@@ -177,7 +209,9 @@ const HackTrigger = styled.button`
 const DropdownContent = styled.div`
   display: ${props => props.isOpen ? 'block' : 'none'};
   position: absolute;
-  right: 0;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
   background-color: #050510;
   min-width: 200px;
   max-height: 300px;
@@ -253,6 +287,57 @@ const createTextCanvas = (text) => {
   return canvas;
 };
 
+// countdown timer component
+const CountdownTimer = ({ onCountdownComplete, lastRefreshTime, isLoading }) => {
+  const [count, setCount] = useState(10);
+  const timerRef = useRef(null);
+  const lastRefreshRef = useRef(lastRefreshTime);
+  
+  // reset count when lastRefreshTime changes or when loading happens
+  useEffect(() => {
+    if (lastRefreshTime !== lastRefreshRef.current || isLoading) {
+      console.log('[CountdownTimer] Resetting countdown due to refresh or loading');
+      setCount(10);
+      lastRefreshRef.current = lastRefreshTime;
+    }
+  }, [lastRefreshTime, isLoading]);
+  
+  useEffect(() => {
+    // only start countdown when not loading
+    if (isLoading) {
+      clearInterval(timerRef.current);
+      return;
+    }
+    
+    // clear any existing interval
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    
+    // start countdown
+    timerRef.current = setInterval(() => {
+      setCount(prevCount => {
+        if (prevCount <= 1) {
+          clearInterval(timerRef.current);
+          onCountdownComplete();
+          return 10; // reset to 10 after completion
+        }
+        return prevCount - 1;
+      });
+    }, 1000);
+    
+    return () => {
+      clearInterval(timerRef.current);
+    };
+  }, [onCountdownComplete, isLoading]);
+  
+  return (
+    <CountdownContainer>
+      {isLoading ? 'Refreshing...' : `Refreshing in ${count} seconds`}
+    </CountdownContainer>
+  );
+};
+
 function App() {
   const [latestBlock, setLatestBlock] = useState(null);
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
@@ -264,10 +349,47 @@ function App() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [hackingStatus, setHackingStatus] = useState('');
   const dropdownRef = useRef(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const logViewerRef = useRef(null);
+  
+  // combined refresh function to update both logs and graph data
+  const refreshAll = useCallback(async () => {
+    console.log('[App.js] ⟳ Starting combined refresh of logs and graph data');
+    setIsLoading(true);
+    setIsRefreshing(true);
+    
+    try {
+      // first refresh the logs
+      if (logViewerRef.current && logViewerRef.current.refreshLogs) {
+        console.log('[App.js] → Refreshing logs via LogViewer ref');
+        await logViewerRef.current.refreshLogs();
+      } else {
+        console.log('[App.js] ⚠️ Could not access LogViewer ref for refresh');
+      }
+      
+      // then refresh the graph data
+      console.log('[App.js] → Refreshing graph data');
+      const data = await blockchainService.fetchTEEData();
+      setGraphData(data);
+      setLastRefresh(Date.now());
+      console.log('[App.js] ✓ Combined refresh completed successfully');
+    } catch (err) {
+      console.error('[App.js] ✗ Error during combined refresh:', err);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, []);
   
   // function to refresh graph data - can be called from LogViewer
   const refreshGraphData = useCallback(async () => {
-    console.log('[App.js] Refreshing graph data due to new verification logs...');
+    // if we're already refreshing everything, don't duplicate the work
+    if (isRefreshing) {
+      console.log('[App.js] Skipping graph refresh as combined refresh is in progress');
+      return;
+    }
+    
+    console.log('[App.js] Refreshing graph data only...');
     setIsLoading(true);
     try {
       const data = await blockchainService.fetchTEEData();
@@ -279,7 +401,7 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isRefreshing]);
   
   useEffect(() => {
     // fetch latest block info on load
@@ -588,24 +710,6 @@ function App() {
                 Latest Sepolia Block: <BlockNumber>{latestBlock.blockNumber.toLocaleString()}</BlockNumber>
               </BlockInfo>
             )}
-            
-            <HackButton ref={dropdownRef}>
-              <HackTrigger onClick={() => setIsDropdownOpen(!isDropdownOpen)}>
-                Hack TEE
-              </HackTrigger>
-              <DropdownContent isOpen={isDropdownOpen}>
-                <DropdownHeader>Select TEE to Hack</DropdownHeader>
-                {graphData.nodes && graphData.nodes.length > 0 ? (
-                  graphData.nodes.map(node => (
-                    <DropdownItem key={node.id} onClick={() => hackTEE(node.id)}>
-                      {node.name || node.id} ({node.status})
-                    </DropdownItem>
-                  ))
-                ) : (
-                  <DropdownItem>No TEEs available</DropdownItem>
-                )}
-              </DropdownContent>
-            </HackButton>
           </div>
         </div>
       </Header>
@@ -617,6 +721,8 @@ function App() {
               <div className="loading-spinner">⟳</div> Loading TEE Network...
             </LoadingOverlay>
           )}
+          
+          <CountdownTimer onCountdownComplete={refreshAll} lastRefreshTime={lastRefresh} isLoading={isLoading} />
           
           <Canvas camera={{ position: [0, 0, 200], fov: 60 }}>
             <color attach="background" args={['#000000']} />
@@ -646,10 +752,28 @@ function App() {
               maxDistance={300}
             />
           </Canvas>
+          
+          <HackButton ref={dropdownRef}>
+            <HackTrigger onClick={() => setIsDropdownOpen(!isDropdownOpen)}>
+              Hack TEE
+            </HackTrigger>
+            <DropdownContent isOpen={isDropdownOpen}>
+              <DropdownHeader>Select TEE to Hack</DropdownHeader>
+              {graphData.nodes && graphData.nodes.length > 0 ? (
+                graphData.nodes.map(node => (
+                  <DropdownItem key={node.id} onClick={() => hackTEE(node.id)}>
+                    {node.name || node.id} ({node.status})
+                  </DropdownItem>
+                ))
+              ) : (
+                <DropdownItem>No TEEs available</DropdownItem>
+              )}
+            </DropdownContent>
+          </HackButton>
         </VisualizerSection>
         
         <LogSection>
-          <LogViewer onNewLogs={refreshGraphData} />
+          <LogViewer ref={logViewerRef} onNewLogs={refreshGraphData} />
         </LogSection>
       </Main>
       

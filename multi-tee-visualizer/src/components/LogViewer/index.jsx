@@ -4,8 +4,8 @@ import { blockchainService } from '../../services/blockchainService';
 import PropTypes from 'prop-types';
 
 const LogContainer = styled.div`
-  background-color: #0c0c0c;
-  color: #33ff33;
+  background-color: #000000;
+  color: #3eff3e;
   border-radius: 8px;
   padding: 16px;
   height: 100%;
@@ -13,44 +13,49 @@ const LogContainer = styled.div`
   font-family: 'JetBrains Mono', 'Courier New', monospace;
   display: flex;
   flex-direction: column;
-  line-height: 1.3;
+  line-height: 1.5;
+  box-shadow: inset 0 0 20px rgba(0, 100, 0, 0.2);
 `;
 
 const LogTitle = styled.div`
-  font-size: 16px;
+  font-size: 18px;
   font-weight: bold;
   margin-bottom: 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  color: #33ff33;
+  color: #3eff3e;
   
   &::before {
     content: "$ ";
-    opacity: 0.7;
+    opacity: 0.8;
   }
 `;
 
 const RefreshButton = styled.button`
-  background-color: #333;
-  color: #33ff33;
-  border: 1px solid #33ff33;
+  background-color: #111111;
+  color: #3eff3e;
+  border: 1px solid #3eff3e;
   border-radius: 4px;
-  padding: 4px 10px;
+  padding: 5px 12px;
   cursor: pointer;
   font-size: 12px;
   font-family: 'JetBrains Mono', 'Courier New', monospace;
   &:hover {
-    background-color: #004400;
+    background-color: #0a2a0a;
+    box-shadow: 0 0 8px rgba(51, 255, 51, 0.4);
   }
 `;
 
 const LogEntry = styled.div`
-  padding: 6px 0;
-  margin-bottom: 4px;
-  color: ${props => props.type === 'SUCCESS' ? '#33ff33' : '#ff5555'};
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  color: ${props => props.type === 'SUCCESS' ? '#3eff3e' : '#ff5555'};
   position: relative;
   overflow-wrap: break-word;
+  background-color: rgba(0, 30, 0, 0.2);
+  border-radius: 4px;
+  border-left: 3px solid ${props => props.type === 'SUCCESS' ? '#3eff3e' : '#ff5555'};
   
   &::before {
     content: "${props => props.type === 'SUCCESS' ? '✓' : '✗'} ";
@@ -61,13 +66,14 @@ const LogEntry = styled.div`
 const LogHeader = styled.div`
   display: flex;
   justify-content: space-between;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   font-size: 11px;
-  opacity: 0.7;
+  color: #aaa;
+  align-items: center;
 `;
 
 const LogMessage = styled.div`
-  font-size: 13px;
+  font-size: 14px;
   margin-left: 20px;
   position: relative;
   
@@ -80,38 +86,48 @@ const LogMessage = styled.div`
 `;
 
 const LogSourceLabel = styled.span`
-  background-color: #333;
-  padding: 1px 4px;
-  border-radius: 2px;
+  background-color: #111111;
+  padding: 2px 6px;
+  border-radius: 4px;
   color: #aaa;
   font-size: 10px;
+  border: 1px solid #333;
 `;
 
 const TxHashLink = styled.a`
-  color: #60a8ff;
+  background-color: #111111;
+  color: #60dcff;
   text-decoration: none;
-  font-size: 10px;
-  opacity: 0.8;
+  font-size: 12px;
+  opacity: 1;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid #0f2b38;
+  display: inline-flex;
+  align-items: center;
+  
   &:hover {
+    background-color: #0f2f3f;
+    box-shadow: 0 0 10px rgba(97, 218, 251, 0.3);
     text-decoration: underline;
-    opacity: 1;
   }
   
   &::before {
-    content: "$ open ";
-    color: #888;
+    content: "🔗 ";
+    margin-right: 4px;
   }
 `;
 
 const LogTimestamp = styled.span`
-  color: #888;
-  font-size: 10px;
+  color: #aaa;
+  font-size: 11px;
+  font-weight: bold;
 `;
 
 const LoadingIndicator = styled.div`
   text-align: left;
   padding: 16px;
-  color: #33ff33;
+  color: #3eff3e;
   position: relative;
   
   &::before {
@@ -154,10 +170,11 @@ const ErrorMessage = styled.div`
   text-align: left;
   padding: 16px;
   color: #ff5555;
-  background-color: rgba(255, 0, 0, 0.1);
+  background-color: rgba(50, 0, 0, 0.3);
   border-radius: 4px;
   margin-bottom: 16px;
   font-size: 12px;
+  border-left: 3px solid #ff5555;
   
   &::before {
     content: "ERROR: ";
@@ -227,26 +244,39 @@ const safeStringify = (value) => {
   return String(value || '');
 };
 
-const LogViewer = ({ onNewLogs }) => {
+// function to format transaction hash for better display
+const formatTxHash = (hash) => {
+  if (!hash) return '';
+  const start = hash.substring(0, 6);
+  const end = hash.substring(hash.length - 4);
+  return `${start}...${end}`;
+};
+
+const LogViewer = React.forwardRef(({ onNewLogs }, ref) => {
   const [logs, setLogs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const containerRef = useRef(null);
   const prevLogsCountRef = useRef(0);
+  const autoRefreshIntervalRef = useRef(null);
 
-  // function to fetch logs once
+  // Simplified function to fetch logs
   const fetchLogs = async () => {
     try {
       console.log('[LogViewer] Fetching logs...');
       setLoading(true);
-      setError(null);
       
       const logsData = await blockchainService.fetchTEELogs();
-      
       console.log(`[LogViewer] Received ${logsData.length} log entries`);
       
-      // sanitize log entries to ensure they are safe for React rendering
-      const sanitizedLogs = logsData.map(log => ({
+      if (logsData.length === 0) {
+        console.log('[LogViewer] No logs received from API');
+        setLoading(false);
+        return;
+      }
+      
+      // process logs only if we have data
+      const processedLogs = logsData.map(log => ({
         ...log,
         node: safeStringify(log.node),
         message: safeStringify(log.message),
@@ -255,25 +285,27 @@ const LogViewer = ({ onNewLogs }) => {
         txHash: safeStringify(log.txHash)
       }));
       
-      // check if we received new logs that would require a graph refresh
-      if (sanitizedLogs.length > 0 && sanitizedLogs.length !== prevLogsCountRef.current) {
-        console.log('[LogViewer] New logs detected, triggering graph refresh');
+      // sort logs from oldest to newest
+      const sortedLogs = processedLogs.sort((a, b) => 
+        new Date(a.timestamp) - new Date(b.timestamp)
+      );
+      
+      // update logs state with the sorted logs
+      setLogs(sortedLogs);
+      
+      // check if log count has changed to trigger a graph refresh
+      if (sortedLogs.length !== prevLogsCountRef.current) {
+        console.log('[LogViewer] Log count changed, triggering graph refresh');
+        prevLogsCountRef.current = sortedLogs.length;
         if (onNewLogs) onNewLogs();
-        prevLogsCountRef.current = sanitizedLogs.length;
       }
       
-      // sort in ascending order - oldest first, newest last
-      const sortedLogs = sanitizedLogs.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-      
-      setLogs(sortedLogs);
-      console.log(`[LogViewer] Set ${sortedLogs.length} verification events to state`);
-      
-      // immediately scroll to bottom after setting logs
+      // scroll to bottom after logs update
       setTimeout(() => {
         if (containerRef.current) {
           containerRef.current.scrollTop = containerRef.current.scrollHeight;
         }
-      }, 0);
+      }, 100);
     } catch (err) {
       console.error('[LogViewer] Error fetching logs:', err);
       setError(`Failed to fetch logs: ${err.message}`);
@@ -281,101 +313,36 @@ const LogViewer = ({ onNewLogs }) => {
       setLoading(false);
     }
   };
+  
+  // expose the refresh function via ref
+  React.useImperativeHandle(ref, () => ({
+    refreshLogs: fetchLogs,
+    isLoading: loading
+  }));
 
-  // load logs on first render
+  // initial fetch and set up auto-refresh
   useEffect(() => {
+    // initial fetch
     fetchLogs();
     
-    // set up auto refresh every 30 seconds
-    const intervalId = setInterval(() => {
+    // auto-refresh every 30 seconds
+    autoRefreshIntervalRef.current = setInterval(() => {
       console.log('[LogViewer] Auto-refreshing logs...');
       fetchLogs();
     }, 30000);
     
-    return () => clearInterval(intervalId);
-  }, [onNewLogs]);
+    // Clean up interval on unmount
+    return () => {
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+      }
+    };
+  }, []);
 
-  // enhance the useEffect to make sure scrolling happens reliably
-  useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight;
-    }
-    
-    // add a delayed scroll to ensure it works even after DOM updates
-    const scrollTimer = setTimeout(() => {
-      if (containerRef.current) {
-        containerRef.current.scrollTop = containerRef.current.scrollHeight;
-      }
-    }, 100);
-    
-    return () => clearTimeout(scrollTimer);
-  }, [logs]);
-
-  // handle manual refresh
-  const handleRefresh = async () => {
-    console.log('[LogViewer] Manually refreshing verification events...');
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const logsData = await blockchainService.fetchTEELogs();
-      console.log(`[LogViewer] Fetched ${logsData.length} verification events`);
-      
-      if (logsData.length > 0) {
-        console.log('[LogViewer] Sample verification event:', logsData[0]);
-      }
-      
-      console.log(`[LogViewer] Previous logs count: ${logs.length}`);
-      
-      // sanitize new logs for React rendering
-      const sanitizedNewLogs = logsData.map(log => ({
-        ...log,
-        node: safeStringify(log.node),
-        message: safeStringify(log.message),
-        source: safeStringify(log.source),
-        type: safeStringify(log.type),
-        txHash: safeStringify(log.txHash)
-      }));
-      
-      console.log(`[LogViewer] Sanitized ${sanitizedNewLogs.length} new log entries`);
-      
-      // combine logs, avoiding duplicates by checking ID
-      const existingIds = new Set(logs.map(log => log.id));
-      const uniqueNewLogs = sanitizedNewLogs.filter(log => !existingIds.has(log.id));
-      
-      console.log(`[LogViewer] Found ${uniqueNewLogs.length} new unique logs`);
-      
-      // Check if we found new unique logs that would require a graph refresh
-      if (uniqueNewLogs.length > 0) {
-        console.log('[LogViewer] New unique logs detected, triggering graph refresh');
-        if (onNewLogs) onNewLogs();
-      }
-      
-      // combine and sort logs by timestamp (ascending order)
-      const combinedLogs = [...logs, ...uniqueNewLogs]
-        .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
-        .slice(-20); // Keep only the 20 most recent logs
-      
-      console.log(`[LogViewer] Total logs after refresh: ${combinedLogs.length}`);
-      
-      // update the previous logs count reference
-      prevLogsCountRef.current = combinedLogs.length;
-      
-      setLogs(combinedLogs);
-      
-      // force scroll to bottom
-      setTimeout(() => {
-        if (containerRef.current) {
-          containerRef.current.scrollTop = containerRef.current.scrollHeight;
-        }
-      }, 0);
-    } catch (err) {
-      console.error('[LogViewer] Error refreshing logs:', err);
-      console.error('[LogViewer] Error stack:', err.stack);
-      setError(`Failed to refresh logs: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
+  // handle manual refresh button click
+  const handleRefresh = () => {
+    console.log('[LogViewer] Manual refresh requested');
+    fetchLogs();
   };
 
   return (
@@ -385,7 +352,7 @@ const LogViewer = ({ onNewLogs }) => {
           tail -f verifications.log
         </span>
         <RefreshButton onClick={handleRefresh} disabled={loading}>
-          {loading ? 'refreshing...' : 'refresh'}
+          {loading ? '⟳ refreshing...' : '⟳ refresh'}
         </RefreshButton>
       </LogTitle>
       
@@ -396,17 +363,17 @@ const LogViewer = ({ onNewLogs }) => {
       )}
       
       {!loading && logs.length === 0 && (
-        <EmptyState>No verification events found in the last 5 minutes</EmptyState>
+        <EmptyState>No verification events found</EmptyState>
       )}
       
       {logs.length > 0 && (
-        <div style={{ marginBottom: '8px', opacity: 0.7, fontSize: '12px', color: '#aaa', textAlign: 'center', borderBottom: '1px dashed #444', paddingBottom: '8px' }}>
+        <div style={{ marginBottom: '12px', opacity: 0.7, fontSize: '12px', color: '#3eff3e', textAlign: 'center', borderBottom: '1px dashed #1a3a1a', paddingBottom: '8px' }}>
           -------- Beginning of verification logs -------- 
         </div>
       )}
       
       {logs.map((log, index) => (
-        <React.Fragment key={log.id}>
+        <React.Fragment key={log.id || `log-${index}`}>
           {index > 0 && <Divider />}
           <LogEntry type={log.type}>
             <LogHeader>
@@ -419,8 +386,9 @@ const LogViewer = ({ onNewLogs }) => {
                 href={`https://sepolia.etherscan.io/tx/${log.txHash}`} 
                 target="_blank" 
                 rel="noopener noreferrer"
+                title="View transaction on Etherscan"
               >
-                {log.txHash.substring(0, 10)}...
+                {formatTxHash(log.txHash)}
               </TxHashLink>
             </LogHeader>
             <LogMessage>
@@ -428,7 +396,7 @@ const LogViewer = ({ onNewLogs }) => {
             </LogMessage>
           </LogEntry>
           {index === logs.length - 1 && (
-            <div style={{ marginTop: '8px', textAlign: 'center', borderTop: '1px dashed #444', paddingTop: '8px', color: '#33ff33', fontSize: '12px' }}>
+            <div style={{ marginTop: '12px', textAlign: 'center', borderTop: '1px dashed #1a3a1a', paddingTop: '8px', color: '#3eff3e', fontSize: '12px' }}>
               -------- End of log (newest) --------
             </div>
           )}
@@ -438,7 +406,7 @@ const LogViewer = ({ onNewLogs }) => {
       <BlinkingCursor />
     </LogContainer>
   );
-};
+});
 
 LogViewer.propTypes = {
   onNewLogs: PropTypes.func
