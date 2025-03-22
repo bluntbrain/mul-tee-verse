@@ -11,6 +11,13 @@ import "./TrustScoreEngine.sol";
  * Part of the Proof of Attestation consensus mechanism.
  */
 contract AttestationVerificationRecord is TrustScoreEngine {
+    // Struct to hold verification data
+    struct VerificationData {
+        string verifierTeeId;
+        string verifiedTeeId;
+        bool success;
+    }
+    
     // Events
     event VerificationSubmitted(
         string indexed verifierTeeId, 
@@ -29,49 +36,53 @@ contract AttestationVerificationRecord is TrustScoreEngine {
     ) TrustScoreEngine(initialOwner, _teeRegistry) {
         // TrustScoreEngine constructor is called with initialOwner and _teeRegistry
     }
-    
+
     /**
-     * @dev Submit a verification result for another TEE
-     * @param _verifierTeeId ID of the TEE submitting the verification
-     * @param _verifiedTeeId ID of the TEE being verified
-     * @param _success Whether the verification was successful
+     * @dev Submit multiple verification results in a single transaction
+     * @param _verifications Array of verification data
+     * @return success Whether the batch submission was successful
      */
-    function submitVerification(
-        string calldata _verifierTeeId,
-        string calldata _verifiedTeeId,
-        bool _success
+    function submitBatchVerifications(
+        VerificationData[] calldata _verifications
     ) 
         external
         returns (bool)
     {
-        // Check if TEEs exist and are active
-        require(teeRegistry.teeIdExists(_verifierTeeId), "Verifier TEE does not exist");
-        require(teeRegistry.teeIdExists(_verifiedTeeId), "Verified TEE does not exist");
+        require(_verifications.length > 0, "Empty verification batch");
         
-        // Get TEE data for verification
-        TEERegistry.TEEData memory verifierData = teeRegistry.getTEEById(_verifierTeeId);
-        TEERegistry.TEEData memory verifiedData = teeRegistry.getTEEById(_verifiedTeeId);
+        // Get verifier TEE ID from the first verification entry
+        string memory verifierTeeId = _verifications[0].verifierTeeId;
         
-        // Check if TEEs are active
-        require(verifierData.isActive, "Verifier TEE is not active");
-        require(verifiedData.isActive, "Verified TEE is not active");
+        // Check if verifier TEE exists
+        require(teeRegistry.teeIdExists(verifierTeeId), "Verifier TEE does not exist");
         
-        // Verify that TEEs are different (prevent self-verification)
-        require(
-            keccak256(abi.encodePacked(_verifierTeeId)) != keccak256(abi.encodePacked(_verifiedTeeId)),
-            "Cannot verify self"
-        );
+        // Process each verification in the batch
+        for (uint256 i = 0; i < _verifications.length; i++) {
+            VerificationData calldata verification = _verifications[i];
+            
+            // Check conditions and skip invalid entries
+            if (!teeRegistry.teeIdExists(verification.verifiedTeeId)) {
+                continue;
+            }
+            
+            if (keccak256(abi.encodePacked(verification.verifierTeeId)) == 
+                keccak256(abi.encodePacked(verification.verifiedTeeId))) {
+                continue;
+            }
+            
+            // Update verification result in the parent contract's storage
+            verificationResults[verification.verifiedTeeId][verification.verifierTeeId] = verification.success;
+            
+            // Emit individual verification event
+            emit VerificationSubmitted(
+                verification.verifierTeeId, 
+                verification.verifiedTeeId, 
+                verification.success
+            );
+        }
         
-        // Authenticate caller (must be the address associated with the verifier TEE)
-        require(msg.sender == verifierData.teeAddress, "Caller is not the verifier TEE address");
-        
-        // Update verification result in the parent contract's storage
-        verificationResults[_verifiedTeeId][_verifierTeeId] = _success;
-        
-        // Recalculate verification counts using the parent contract's method
+        // Recalculate verification counts once after all updates
         recalculateVerificationCounts();
-        
-        emit VerificationSubmitted(_verifierTeeId, _verifiedTeeId, _success);
         
         return true;
     }
