@@ -81,4 +81,21 @@ contract MultiTEEStorage {
         return teeIds.length;
     }
     
+    /**
+    * @dev Get all TEE records as parallel arrays
+    * @return ids Array of all TEE IDs
+    * @return data Array of TEE data structures in the same order as ids
+    */
+    function getAllTEERecords() external view returns (string[] memory ids, TEEData[] memory data) {
+        uint256 count = teeIds.length;
+        ids = new string[](count);
+        data = new TEEData[](count);
+        
+        for (uint256 i = 0; i < count; i++) {
+            ids[i] = teeIds[i];
+            data[i] = teeRecords[teeIds[i]];
+        }
+        
+        return (ids, data);
+    }
 }
