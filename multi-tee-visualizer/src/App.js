@@ -7,6 +7,7 @@ import LogViewer from './components/LogViewer';
 import { blockchainService } from './services/blockchainService';
 import './App.css';
 import * as THREE from 'three';
+import { HACK_TEE_API_ENDPOINT } from './utils/contants';
 
 // import TEE node images
 import secureNodeImg from './assets/secure_TEE.png';
@@ -59,9 +60,9 @@ const Header = styled.header`
 
 const Title = styled.h1`
   margin: 0;
-  font-size: 20px;
+  font-size: 28px;
   font-weight: 600;
-  color: #61dafb;
+  color: white;
 `;
 
 const Subtitle = styled.p`
@@ -118,6 +119,7 @@ const BlockInfo = styled.div`
   padding: 4px 10px;
   border-radius: 4px;
   margin-left: auto;
+  margin-right: 16px;
   font-size: 12px;
 `;
 
@@ -150,6 +152,59 @@ const LoadingOverlay = styled.div`
   z-index: 10;
   color: #61dafb;
   font-size: 1.2rem;
+`;
+
+const HackButton = styled.div`
+  position: relative;
+  display: inline-block;
+`;
+
+const HackTrigger = styled.button`
+  background-color: #FF4444;
+  color: white;
+  font-weight: bold;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+
+  &:hover {
+    background-color: #FF6666;
+  }
+`;
+
+const DropdownContent = styled.div`
+  display: ${props => props.isOpen ? 'block' : 'none'};
+  position: absolute;
+  right: 0;
+  background-color: #050510;
+  min-width: 200px;
+  max-height: 300px;
+  overflow-y: auto;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.5);
+  z-index: 1000;
+  border-radius: 4px;
+`;
+
+const DropdownItem = styled.div`
+  color: white;
+  padding: 12px 16px;
+  text-decoration: none;
+  display: block;
+  cursor: pointer;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: #111122;
+  }
+`;
+
+const DropdownHeader = styled.div`
+  color: #61dafb;
+  padding: 12px 16px;
+  border-bottom: 1px solid #222233;
+  font-weight: bold;
 `;
 
 // wrapper component to apply frame updates to ForceGraph
@@ -205,6 +260,26 @@ function App() {
   const [highlightNodes, setHighlightNodes] = useState(new Set());
   const [highlightLinks, setHighlightLinks] = useState(new Set());
   const [hoverNode, setHoverNode] = useState(null);
+  const [lastRefresh, setLastRefresh] = useState(Date.now());
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [hackingStatus, setHackingStatus] = useState('');
+  const dropdownRef = useRef(null);
+  
+  // function to refresh graph data - can be called from LogViewer
+  const refreshGraphData = useCallback(async () => {
+    console.log('[App.js] Refreshing graph data due to new verification logs...');
+    setIsLoading(true);
+    try {
+      const data = await blockchainService.fetchTEEData();
+      setGraphData(data);
+      setLastRefresh(Date.now());
+      console.log('[App.js] Graph data refreshed successfully');
+    } catch (err) {
+      console.error('[App.js] Error refreshing graph data:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
   
   useEffect(() => {
     // fetch latest block info on load
@@ -213,10 +288,11 @@ function App() {
       setLatestBlock(blockInfo);
     };
     
-    // fetch graph data from blockchain service
+    // fetch graph data from blockchain service - only once at load time
     const fetchGraphData = async () => {
       setIsLoading(true);
       try {
+        console.log('[App.js] Fetching TEE data once at load time...');
         const data = await blockchainService.fetchTEEData();
         setGraphData(data);
       } catch (err) {
@@ -226,16 +302,17 @@ function App() {
       }
     };
     
+    // Initial fetch for both
     fetchBlockInfo();
     fetchGraphData();
     
-    // update block info and graph data periodically
+    // Only update block info periodically
     const blockInterval = setInterval(fetchBlockInfo, 10000);
-    const graphInterval = setInterval(fetchGraphData, 30000);
+    
+    // No periodic updates for graph data since TEE records don't change
     
     return () => {
       clearInterval(blockInterval);
-      clearInterval(graphInterval);
     };
   }, []);
   
@@ -355,9 +432,9 @@ function App() {
     return {
       nodeRelSize,
       nodeResolution: 16,
-      linkWidth: link => highlightLinks.has(link) ? 1 : 1,
+      linkWidth: link => highlightLinks.has(link) ? 1 : 0.5,
       linkColor: link => highlightLinks.has(link) ? '#FFAA00' : '#FFFFFF',
-      linkOpacity: 0.4,
+      linkOpacity: 0.5,
       linkDirectionalParticles: link => highlightLinks.has(link) ? 4 : 0,
       linkDirectionalParticleWidth: 2,
       linkDirectionalParticleSpeed: 0.01,
@@ -441,20 +518,95 @@ function App() {
     };
   }, [highlightNodes, highlightLinks, hoverNode, handleNodeHover, handleLinkHover, handleNodeClick]);
   
+  // handle click outside to close dropdown
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [dropdownRef]);
+  
+  // function to hack a TEE
+  const hackTEE = async (teeId) => {
+    console.log(`[App.js] Attempting to hack TEE: ${teeId}`);
+    setHackingStatus(`Hacking ${teeId}...`);
+    setIsDropdownOpen(false);
+    
+    try {
+      // make a dummy GET API call to the hack endpoint
+      const response = await fetch(`${HACK_TEE_API_ENDPOINT}?teeId=${teeId}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+      
+      // this will fail since it's a dummy URL, but in a real app we'd handle the response
+      const result = await response.json();
+      console.log(`[App.js] Hack response:`, result);
+      setHackingStatus(`Hack successful for ${teeId}!`);
+      
+      // refresh graph data to show updated status
+      refreshGraphData();
+      
+    } catch (error) {
+      console.log(`[App.js] Simulating successful hack for ${teeId} (API call failed as expected)`);
+      // for demo purposes, we'll still show success
+      setHackingStatus(`Hack successful for ${teeId}! (Simulated)`);
+      
+      // simulate delayed status clearing
+      setTimeout(() => {
+        setHackingStatus('');
+      }, 3000);
+    }
+  };
+  
   return (
     <AppContainer>
       <Header>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <Title>Mul<span style={{ color: '#33CC99' }}>TEE</span>verse</Title>
+            <Title>Mul<span style={{ color: '#33CC99', fontWeight: 800 }}>TEE</span>verse</Title>
             <Subtitle>3D Multi-TEE Distributed Network Visualizer</Subtitle>
           </div>
           
-          {latestBlock && (
-            <BlockInfo>
-              Latest Block: <BlockNumber>{latestBlock.blockNumber.toLocaleString()}</BlockNumber>
-            </BlockInfo>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            {hackingStatus && (
+              <div style={{ color: '#FF6666', marginRight: '16px', fontStyle: 'italic' }}>
+                {hackingStatus}
+              </div>
+            )}
+            
+            {latestBlock && (
+              <BlockInfo>
+                Latest Sepolia Block: <BlockNumber>{latestBlock.blockNumber.toLocaleString()}</BlockNumber>
+              </BlockInfo>
+            )}
+            
+            <HackButton ref={dropdownRef}>
+              <HackTrigger onClick={() => setIsDropdownOpen(!isDropdownOpen)}>
+                Hack TEE
+              </HackTrigger>
+              <DropdownContent isOpen={isDropdownOpen}>
+                <DropdownHeader>Select TEE to Hack</DropdownHeader>
+                {graphData.nodes && graphData.nodes.length > 0 ? (
+                  graphData.nodes.map(node => (
+                    <DropdownItem key={node.id} onClick={() => hackTEE(node.id)}>
+                      {node.name || node.id} ({node.status})
+                    </DropdownItem>
+                  ))
+                ) : (
+                  <DropdownItem>No TEEs available</DropdownItem>
+                )}
+              </DropdownContent>
+            </HackButton>
+          </div>
         </div>
       </Header>
       
@@ -497,12 +649,12 @@ function App() {
         </VisualizerSection>
         
         <LogSection>
-          <LogViewer />
+          <LogViewer onNewLogs={refreshGraphData} />
         </LogSection>
       </Main>
       
       <Footer>
-        &copy; {new Date().getFullYear()} Multi-TEE Network Visualizer | Data refreshes every 10 seconds
+        &copy; {new Date().getFullYear()} Multi-TEE Network Visualizer | Graph last updated: {new Date(lastRefresh).toLocaleTimeString()}
       </Footer>
     </AppContainer>
   );

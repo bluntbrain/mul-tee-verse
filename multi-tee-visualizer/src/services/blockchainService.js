@@ -27,6 +27,9 @@ const attestationContract = new ethers.Contract(
 // track the latest block for event filtering
 let latestBlock = 0;
 
+// In-memory cache for TEE records - these don't change often
+let cachedTEERecords = null;
+
 // cache for graph data to avoid unnecessary fetching
 let cachedGraphData = null;
 let lastUpdated = 0;
@@ -45,15 +48,19 @@ const safeLog = (label, obj) => {
 };
 
 // calculate trust score and determine node status
+// trust Score Legend:
+// - Above 75%: Secure (Green)
+// - 51-75%: Warning (Yellow)
+// - 0-50%: Anomaly (Red)
 const calculateTrustScoreAndStatus = (totalVerifications, successfulVerifications) => {
   if (totalVerifications === 0) return { trustScore: 0, status: 'warning' };
   
   const trustScore = (successfulVerifications / totalVerifications) * 100;
   
   let status;
-  if (trustScore >= 75) {
+  if (trustScore > 75) {
     status = 'secure';
-  } else if (trustScore >= 40) {
+  } else if (trustScore > 50) {
     status = 'warning';
   } else {
     status = 'anomaly';
@@ -69,115 +76,113 @@ export const blockchainService = {
     console.log(`[blockchainService] TEE_REGISTRY_ADDRESS: ${TEE_REGISTRY_ADDRESS}`);
     console.log(`[blockchainService] ATTESATION_VERIFICATION_RECORD_ADDRESS: ${ATTESATION_VERIFICATION_RECORD_ADDRESS}`);
     
-    const now = Date.now();
-    
     try {
-      if (!cachedGraphData || (now - lastUpdated > UPDATE_INTERVAL)) {
-        // fetch all TEE records from the registry
-        console.log('[blockchainService] Calling getAllTEERecords()...');
+      // For TEE Records - only fetch once and cache in memory
+      if (!cachedTEERecords) {
+        console.log('[blockchainService] Calling getAllTEERecords() - this will only happen once...');
         const [teeIds, teeData] = await teeRegistryContract.getAllTEERecords();
         console.log(`[blockchainService] Retrieved ${teeIds.length} TEE records`);
         safeLog('TEE IDs', teeIds);
         safeLog('First TEE data entry (sample)', teeIds.length > 0 ? teeData[0] : 'No TEEs found');
         
-        // fetch verification counts for all TEEs
-        console.log('[blockchainService] Calling getAllVerificationCounts()...');
-        const [verificationIds, totalVerifications, successfulVerifications] = 
-          await attestationContract.getAllVerificationCounts();
-        console.log(`[blockchainService] Retrieved verification counts for ${verificationIds.length} TEEs`);
-        safeLog('Verification IDs', verificationIds);
-        
-        if (verificationIds.length > 0) {
-          console.log('[blockchainService] Sample verification counts:');
-          console.log(`[blockchainService] TEE ID: ${typeof verificationIds[0] === 'object' ? 'Object (indexed string)' : verificationIds[0]}`);
-          console.log(`[blockchainService] Total Verifications: ${totalVerifications[0].toString()}`);
-          console.log(`[blockchainService] Successful Verifications: ${successfulVerifications[0].toString()}`);
-        }
-        
-        // create a map for easier lookup - ensure all IDs are strings
-        const verificationMap = {};
-        for (let i = 0; i < verificationIds.length; i++) {
-          // convert any potential object to string
-          const teeId = typeof verificationIds[i] === 'object' 
-            ? `TEE-${verificationIds[i].hash.slice(0, 8)}` 
-            : String(verificationIds[i]);
-            
-          verificationMap[teeId] = {
-            total: totalVerifications[i].toNumber(),
-            successful: successfulVerifications[i].toNumber()
-          };
-        }
-        safeLog('Verification map (sample)', Object.keys(verificationMap).length > 0 
-          ? { [Object.keys(verificationMap)[0]]: verificationMap[Object.keys(verificationMap)[0]] } 
-          : 'No verification data');
-        
-        // create nodes - ensure all IDs are strings
-        const nodes = teeIds.map((id, index) => {
-          // convert any potential object to string
-          const teeId = typeof id === 'object' 
-            ? `TEE-${id.hash.slice(0, 8)}` 
-            : String(id);
-            
-          const verifications = verificationMap[teeId] || { total: 0, successful: 0 };
-          const { trustScore, status } = calculateTrustScoreAndStatus(
-            verifications.total,
-            verifications.successful
-          );
+        // Store in memory - these won't change often
+        cachedTEERecords = { teeIds, teeData };
+      } else {
+        console.log('[blockchainService] Using cached TEE records');
+      }
+      
+      const { teeIds, teeData } = cachedTEERecords;
+      
+      // Always get fresh verification counts - these can change frequently
+      console.log('[blockchainService] Calling getAllVerificationCounts()...');
+      const [verificationIds, totalVerifications, successfulVerifications] = 
+        await attestationContract.getAllVerificationCounts();
+      console.log(`[blockchainService] Retrieved verification counts for ${verificationIds.length} TEEs`);
+      
+      if (verificationIds.length > 0) {
+        console.log('[blockchainService] Sample verification counts:');
+        console.log(`[blockchainService] TEE ID: ${typeof verificationIds[0] === 'object' ? 'Object (indexed string)' : verificationIds[0]}`);
+        console.log(`[blockchainService] Total Verifications: ${totalVerifications[0].toString()}`);
+        console.log(`[blockchainService] Successful Verifications: ${successfulVerifications[0].toString()}`);
+      }
+      
+      // Create a map for easier lookup - ensure all IDs are strings
+      const verificationMap = {};
+      for (let i = 0; i < verificationIds.length; i++) {
+        // Convert any potential object to string
+        const teeId = typeof verificationIds[i] === 'object' 
+          ? `TEE-${verificationIds[i].hash.slice(0, 8)}` 
+          : String(verificationIds[i]);
           
-          // also ensure teeData properties are properly stringified
-          const teeAddress = teeData[index].teeAddress || "0x0000000000000000000000000000000000000000";
-          const isActive = !!teeData[index].isActive;
-          const teeDataStr = typeof teeData[index].teeData === 'object'
-            ? JSON.stringify(teeData[index].teeData)
-            : String(teeData[index].teeData || "");
+        verificationMap[teeId] = {
+          total: totalVerifications[i].toNumber(),
+          successful: successfulVerifications[i].toNumber()
+        };
+      }
+      
+      // Create nodes - ensure all IDs are strings
+      const nodes = teeIds.map((id, index) => {
+        // Convert any potential object to string
+        const teeId = typeof id === 'object' 
+          ? `TEE-${id.hash.slice(0, 8)}` 
+          : String(id);
           
-          return {
-            id: teeId,
-            name: `${teeId} (${trustScore}%)`,
-            status,
-            group: status === 'secure' ? 1 : status === 'warning' ? 2 : 3,
-            teeAddress,
-            isActive,
-            teeDataStr,
-            trustScore,
-            totalVerifications: verifications.total,
-            successfulVerifications: verifications.successful
-          };
+        const verifications = verificationMap[teeId] || { total: 0, successful: 0 };
+        const { trustScore, status } = calculateTrustScoreAndStatus(
+          verifications.total,
+          verifications.successful
+        );
+        
+        // Also ensure teeData properties are properly stringified
+        const teeAddress = teeData[index].teeAddress || "0x0000000000000000000000000000000000000000";
+        const isActive = !!teeData[index].isActive;
+        const teeDataStr = typeof teeData[index].teeData === 'object'
+          ? JSON.stringify(teeData[index].teeData)
+          : String(teeData[index].teeData || "");
+        
+        return {
+          id: teeId,
+          name: `${teeId} (${trustScore}%)`,
+          status,
+          group: status === 'secure' ? 1 : status === 'warning' ? 2 : 3,
+          teeAddress,
+          isActive,
+          teeDataStr,
+          trustScore,
+          totalVerifications: verifications.total,
+          successfulVerifications: verifications.successful
+        };
+      });
+      
+      console.log(`[blockchainService] Created ${nodes.length} TEE nodes with calculated trust scores`);
+      if (nodes.length > 0) {
+        const sampleNodes = nodes.slice(0, Math.min(nodes.length, 3));
+        sampleNodes.forEach((node, i) => {
+          console.log(`[blockchainService] Node ${i+1} - ID: ${node.id}, Status: ${node.status}, Trust Score: ${node.trustScore}%`);
         });
-        
-        console.log(`[blockchainService] Created ${nodes.length} TEE nodes with calculated trust scores`);
-        if (nodes.length > 0) {
-          const sampleNodes = nodes.slice(0, Math.min(nodes.length, 3));
-          sampleNodes.forEach((node, i) => {
-            console.log(`[blockchainService] Node ${i+1} - ID: ${node.id}, Status: ${node.status}, Trust Score: ${node.trustScore}%`);
+      }
+      
+      // Create links (simple connections for now - could be enhanced with real attestation relationships)
+      const links = [];
+      
+      // connect all nodes to all other nodes (fully connected graph)
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          // create a link between every pair of nodes
+          links.push({
+            source: nodes[i].id,
+            target: nodes[j].id
           });
         }
-        
-        // create links (simple connections for now - could be enhanced with real attestation relationships)
-        const links = [];
-        
-        // connect nodes based on attestation relationships
-        for (let i = 0; i < nodes.length; i++) {
-          for (let j = i + 1; j < nodes.length; j++) {
-            // create a link with 70% probability to ensure not all nodes are connected
-            if (Math.random() > 0.3) {
-              links.push({
-                source: nodes[i].id,
-                target: nodes[j].id
-              });
-            }
-          }
-        }
-        
-        console.log(`[blockchainService] Created ${links.length} links between nodes`);
-        
-        cachedGraphData = { nodes, links };
-        lastUpdated = now;
-        
-        console.log(`[blockchainService] Fetched ${nodes.length} TEE nodes with verification data`);
-      } else {
-        console.log('[blockchainService] Using cached graph data, last updated:', new Date(lastUpdated).toLocaleString());
       }
+      
+      console.log(`[blockchainService] Created ${links.length} links between nodes (fully connected graph)`);
+      
+      // Return the graph data
+      cachedGraphData = { nodes, links };
+      lastUpdated = Date.now();
+      
+      console.log(`[blockchainService] Fetched ${nodes.length} TEE nodes with verification data`);
       
       return cachedGraphData;
     } catch (error) {
@@ -196,81 +201,105 @@ export const blockchainService = {
       console.log(`[blockchainService] Current block number: ${currentBlock}`);
       
       // if this is the first time, look back 10000 blocks, otherwise from the last fetched block
-      const fromBlock = latestBlock === 0 ? currentBlock - 10000 : latestBlock + 1;
+      // we want to get enough blocks to find at least 10 events or events from the last 5 minutes
+      const fiveMinutesInBlocks = Math.ceil(5 * 60 / 15); // Approximately 20 blocks (assuming 15 sec block time)
+      
+      // use the max between a fixed lookback and latestBlock+1 to ensure we get enough events
+      const fromBlock = latestBlock === 0 ? 
+        Math.max(currentBlock - 10000, 0) : 
+        Math.max(currentBlock - fiveMinutesInBlocks, latestBlock + 1);
+        
       console.log(`[blockchainService] Fetching events from block ${fromBlock} to ${currentBlock}`);
       
-      // don't exceed current block
+      // don't proceed if no new blocks
       if (fromBlock > currentBlock) {
         console.log('[blockchainService] No new blocks to check for events');
         return [];
       }
       
-      // update latest block
-      latestBlock = currentBlock;
-      
-      // create filter for VerificationSubmitted events
-      const filter = attestationContract.filters.VerificationSubmitted();
-      console.log('[blockchainService] Created filter for VerificationSubmitted events');
-      
       // get events
+      const filter = attestationContract.filters.VerificationSubmitted();
       const events = await attestationContract.queryFilter(filter, fromBlock, currentBlock);
-      
       console.log(`[blockchainService] Found ${events.length} verification events`);
       
-      // log details of the first event if available
+      // update latest processed block
+      latestBlock = currentBlock;
+      
+      // if we have events, process them
       if (events.length > 0) {
-        const sampleEvent = events[0];
-        console.log('[blockchainService] Sample event details:');
-        console.log(`[blockchainService] Block number: ${sampleEvent.blockNumber}`);
-        console.log(`[blockchainService] Transaction hash: ${sampleEvent.transactionHash}`);
-        console.log(`[blockchainService] Event name: VerificationSubmitted`);
-        console.log('[blockchainService] Event args:');
-        for (const key in sampleEvent.args) {
-          if (isNaN(parseInt(key))) { // Skip numeric keys which are duplicates
-            const value = sampleEvent.args[key];
-            console.log(`[blockchainService] - ${key}: ${typeof value === 'object' ? 'Object (indexed string)' : value}`);
-          }
-        }
-      }
-      
-      // format events into log entries
-      const logs = events.map((event) => {
-        // for indexed string parameters, ethers returns special objects with hash property
-        // ee need to get the actual string values from the event topics
-        // get the non-indexed parameters directly
-        const { success } = event.args;
+        // get the blocks for the events to access their timestamps
+        const blockPromises = [...new Set(events.map(e => e.blockNumber))].map(
+          blockNum => provider.getBlock(blockNum)
+        );
+        const blocks = await Promise.all(blockPromises);
+        const blockTimestamps = {};
         
-        // get verifierTeeId and verifiedTeeId safely as strings
-        // if they're objects (indexed strings), convert to string representation
-        const verifierTeeId = typeof event.args.verifierTeeId === 'object' 
-          ? `TEE-${event.args.verifierTeeId.hash.slice(0, 8)}` // Use a portion of the hash as an identifier
-          : String(event.args.verifierTeeId);
+        // create a map of block number to timestamp
+        blocks.forEach(block => {
+          blockTimestamps[block.number] = block.timestamp * 1000; // Convert to milliseconds
+        });
+        
+        // format events into log entries
+        let logs = events.map((event) => {
+          // for indexed string parameters, ethers returns special objects with hash property
+          const { success } = event.args;
           
-        const verifiedTeeId = typeof event.args.verifiedTeeId === 'object'
-          ? `TEE-${event.args.verifiedTeeId.hash.slice(0, 8)}`
-          : String(event.args.verifiedTeeId);
+          // get verifierTeeId and verifiedTeeId safely as strings
+          const verifierTeeId = typeof event.args.verifierTeeId === 'object' 
+            ? `TEE-${event.args.verifierTeeId.hash.slice(0, 8)}`
+            : String(event.args.verifierTeeId);
+            
+          const verifiedTeeId = typeof event.args.verifiedTeeId === 'object'
+            ? `TEE-${event.args.verifiedTeeId.hash.slice(0, 8)}`
+            : String(event.args.verifiedTeeId);
+          
+          // get the timestamp for this event's block
+          const blockTimestamp = blockTimestamps[event.blockNumber] 
+            ? new Date(blockTimestamps[event.blockNumber])
+            : new Date(); // fallback
+          
+          return {
+            id: `event-${event.blockNumber}-${event.transactionIndex}`,
+            timestamp: blockTimestamp,
+            blockNumber: event.blockNumber,
+            type: success ? 'SUCCESS' : 'ERROR',
+            node: verifiedTeeId,
+            message: `TEE ${verifierTeeId} ${success ? 'successfully verified' : 'failed to verify'} TEE ${verifiedTeeId}`,
+            source: 'AttestationRecord',
+            txHash: event.transactionHash
+          };
+        });
         
-        const blockTimestamp = new Date(); 
+        // sort by timestamp (newest first)
+        logs = logs.sort((a, b) => b.timestamp - a.timestamp);
         
-        return {
-          id: `event-${event.blockNumber}-${event.transactionIndex}`,
-          timestamp: blockTimestamp,
-          type: success ? 'SUCCESS' : 'ERROR',
-          node: verifiedTeeId,
-          message: `TEE ${verifierTeeId} ${success ? 'successfully verified' : 'failed to verify'} TEE ${verifiedTeeId}`,
-          source: 'AttestationRecord',
-          txHash: event.transactionHash
-        };
-      });
-      
-      console.log(`[blockchainService] Processed ${logs.length} verification events into log entries`);
-      if (logs.length > 0) {
-        console.log('[blockchainService] Sample log entry:', logs[0]);
+        // filter to get only events from the last 5 minutes
+        const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+        const recentLogs = logs.filter(log => log.timestamp.getTime() >= fiveMinutesAgo);
+        
+        // take either the logs from the last 5 minutes or the last 10 logs, whichever has more entries
+        const finalLogs = recentLogs.length >= 10 ? recentLogs : logs.slice(0, 10);
+        
+        console.log(`[blockchainService] Processing ${finalLogs.length} verification events (limited to 10 most recent or last 5 minutes)`);
+        
+        if (finalLogs.length > 0) {
+          console.log('[blockchainService] Sample log entry:', finalLogs[0]);
+          console.log(`[blockchainService] Earliest log: ${finalLogs[finalLogs.length-1].timestamp.toISOString()}`);
+          console.log(`[blockchainService] Latest log: ${finalLogs[0].timestamp.toISOString()}`);
+          
+          // log number of events by type
+          const successCount = finalLogs.filter(log => log.type === 'SUCCESS').length;
+          const errorCount = finalLogs.filter(log => log.type === 'ERROR').length;
+          console.log(`[blockchainService] Success events: ${successCount}, Error events: ${errorCount}`);
+        }
+        
+        return finalLogs;
       }
       
-      return logs.sort((a, b) => b.timestamp - a.timestamp);
+      return [];
     } catch (error) {
       console.error('[blockchainService] Error fetching verification events:', error);
+      console.error('[blockchainService] Error details:', error.message);
       return [];
     }
   },

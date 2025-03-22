@@ -33,7 +33,7 @@ MulTEEverse implements this groundbreaking approach where:
 
 Our 3D visualizer provides:
 
-- Real-time view of the TEE network with node status (green = secure, yellow = warning, red = anomaly)
+- Real-time view of the TEE network with node status (green = secure (>75%), yellow = warning (51-75%), red = anomaly (≤50%))
 - Interactive exploration of TEE relationships and trust scores
 - Live verification events from the blockchain
 

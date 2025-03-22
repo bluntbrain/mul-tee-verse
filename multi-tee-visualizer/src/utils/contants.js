@@ -8,3 +8,6 @@ export const ATTESATION_VERIFICATION_RECORD_ABI = require("../abi/AttestationVer
 
 // RPC URL for Ethereum Sepolia
 export const RPC_URL_SEPOLIA = "https://eth-sepolia.g.alchemy.com/v2/t4Tylj9lN2WwI_vMZVsg46Uc7yiqyDjZ";
+
+// API Endpoints
+export const HACK_TEE_API_ENDPOINT = "https://api.multeeverse.io/hack-tee"; 
