@@ -368,8 +368,17 @@ function App() {
       },
       nodeLabel: node => {
         if (!node) return '';
-        if (!node.status) return node.name || 'Unknown Node';
-        return `${node.name || 'Node'} - ${node.status.toUpperCase()}`;
+        
+        // format trust score if available
+        let trustScoreText = '';
+        if (node.trustScore !== undefined) {
+          trustScoreText = ` - Trust: ${node.trustScore}%`;
+        }
+        
+        if (!node.status) return `${node.name || 'Unknown Node'}${trustScoreText}`;
+        
+        const statusText = node.status.charAt(0).toUpperCase() + node.status.slice(1);
+        return `${node.name || 'Node'} - ${statusText}${trustScoreText}`;
       },
       // use sprite images for nodes
       nodeThreeObject: node => {
@@ -402,9 +411,10 @@ function App() {
         sprite.scale.set(14, 14, 1); // Slightly smaller to avoid any surrounding elements
         
         // add a smaller text label above the node
+        const nodeName = node.name || 'Node';
         const labelSprite = new THREE.Sprite(
           new THREE.SpriteMaterial({
-            map: new THREE.CanvasTexture(createTextCanvas(node.name || 'Node')),
+            map: new THREE.CanvasTexture(createTextCanvas(nodeName)),
             transparent: true
           })
         );
