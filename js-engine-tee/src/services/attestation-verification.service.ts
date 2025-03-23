@@ -38,12 +38,24 @@ export class AttestationVerificationService {
         name: 'attestation-verification-job'
     })
     async handleNetworkAttestationVerification() {
-        this.logger.log('Starting attestation verification process');
         const networkTees = this.teeService.getNetworkTeeNodes();
+
+        // Array to store verification results for all TEEs
+        const verificationResults: Array<{
+            verifierTeeId: string;
+            verifiedTeeId: string;
+            success: boolean;
+        }> = [];
 
         for (const tee of networkTees) {
             try {
-                this.logger.log(`Verifying TEE node: ${tee.appId}`);
+                if(tee.appId===process.env.APP_ID) {
+                    console.log(`⏩ Skipping self-verification for ${process.env.APP_ID}`);
+                    continue;
+                }
+                console.log('--------------------------------------------------'); 
+                console.log(`🔥 Attestation Verification for TEE node: ${tee.appId}`); 
+                console.log('--------------------------------------------------');
                 
                 // Fetch Attestation Quotes from the Remote TEEs
                 const attestationUrl = `https://${tee.appId}-8080.dstack-prod5.phala.network/attestation`;  
@@ -58,32 +70,52 @@ export class AttestationVerificationService {
                 // Verify the quote using dcap-qvl(Intel's DCAP Quote Verification Library)
                 const { stdout, stderr } = await execPromise('dcap-qvl verify quote.bin');
                 if (stdout) {
-                    this.logger.log(`Verification output: ${stdout}`);
+                    console.log(`Verification output :`);
+                    console.log(`${stdout}`);
                 }
                 if (stderr) {
-                    this.logger.log(`Verification messages: ${stderr}`);
+                    console.log(`Verification messages :`);
+                    console.log(`${stderr}`);
                 }
                 
                 // Log the verification result to Protocol
                 const isVerified = stderr.includes('Quote verified');
-                this.logger.log(`Quote verification result: ${isVerified ? 'Verified' : 'Not Verified'}`);
+                console.log('--------------------------------------------------'); 
+                console.log(`🔥 Verification Result for TEE ${tee.appId}: ${isVerified ? 'Verified' : 'Not Verified'}`); 
+                console.log('--------------------------------------------------\n\n');
                 
                 // Cleanup temp files
                 fs.unlinkSync('quote.hex');
                 fs.unlinkSync('quote.bin');
 
-                // Log the TEE status to protocol
-                this.multiTeeProtocolService.updateNodeVerificationStatus(tee.appId, isVerified, new Date());
-                
+                // Add the verification result to the array in the expected format
+                verificationResults.push({
+                    verifierTeeId: `${process.env.APP_ID}`,
+                    verifiedTeeId: tee.appId,
+                    success: isVerified
+                });   
             } catch (error) {
-                this.logger.error(`Error in attestation process: ${error.message}`);
-                    try {
-                        if (fs.existsSync('quote.hex')) fs.unlinkSync('quote.hex');
-                        if (fs.existsSync('quote.bin')) fs.unlinkSync('quote.bin');
-                    } catch (cleanupError) {
-                        this.logger.error(`Error cleaning up files: ${cleanupError.message}`);
-                    }
+                console.error(`Error in attestation process: ${error.message}`);
+                verificationResults.push({
+                    verifierTeeId: `${process.env.APP_ID}`,
+                    verifiedTeeId: tee.appId,
+                    success: false
+                });  
+                try {
+                    if (fs.existsSync('quote.hex')) fs.unlinkSync('quote.hex');
+                    if (fs.existsSync('quote.bin')) fs.unlinkSync('quote.bin');
+                } catch (cleanupError) {
+                    console.error(`Error cleaning up files: ${cleanupError.message}`);
                 }
+            }
+        }
+        //Submit Verification to protocol
+        if (verificationResults.length > 0) {
+            this.multiTeeProtocolService.updateNodeVerificationStatus(verificationResults);
+        } else {
+            console.log('--------------------------------------------------'); 
+            console.log(`🔥 Nothing to Verify`); 
+            console.log('--------------------------------------------------\n\n');
         }
     }
 }

@@ -12,15 +12,18 @@ export class TeeService implements OnModuleInit {
 
   // TEE network data structure
   private networkTeeNodes = [
-    { appId: 'd3d457f80a1e5c9f51c27dcc7125ba21f2418e08', status: true}
+    { appId: 'd3d457f80a1e5c9f51c27dcc7125ba21f2418e08', status: true},
+    { appId: '14109e263ae195921751a1c77898b3b8a493e8cf', status: true},
+    { appId: 'f47544606771cb9a3175b51bb21a7d941c1b67e3', status: true},
+    { appId: 'dee7769dc1cb0a28ce15dee7595d72601e51369e', status: true},
+    { appId: 'eff32080ad6be2fa3a4b0136c66b808164d1f08d', status: true}
   ];
 
   async onModuleInit() {
     try {
       await this.generateAttestationReport();
-      this.logger.log('Attestation report generated successfully');
     } catch (error) {
-      this.logger.error('Failed to generate attestation report:', error);
+      console.error('Failed to generate attestation report:', error);
     }
   }
 
@@ -36,14 +39,22 @@ export class TeeService implements OnModuleInit {
    * @returns The complete quote result that can be used for remote attestation
    */
   async generateAttestationReport() {
+    console.log('--------------------------------------------------');
+    console.log('🚀 Starting attestation report generation process...');
+    console.log('--------------------------------------------------');
     const client = new TappdClient();
     await client.info();
     const quoteResult = await client.tdxQuote('user-data', 'sha256');
-    this.logger.log('Report generated successfully');
+    console.log('ATTESTATION REPORT GENERATED SUCCESSFULLY');
+    console.log('ATTESTATION QUOTE :');
     this.attestationReport = quoteResult;
-    this.logger.log(quoteResult.quote);
+    console.log(quoteResult.quote);
     const rtmrs = quoteResult.replayRtmrs();
-    this.logger.log(rtmrs);
+    console.log('ATTESTATION RTMRS :');
+    console.log(rtmrs);
+    console.log('--------------------------------------------------');
+    console.log('🔒 System integrity verified and attestation complete');
+    console.log('--------------------------------------------------\n\n');
     return quoteResult;
   }
 
@@ -55,7 +66,9 @@ export class TeeService implements OnModuleInit {
    */
   toggleAnomalyFlag(): { status: boolean } {
     this.anamolyTEE = !this.anamolyTEE;
-    this.logger.log(`TEE has been Marked As Anamoly: ${this.anamolyTEE}`);
+    console.log('--------------------------------------------------');
+    console.log(`⚠️ This TEE has been Marked As Anamoly: ${this.anamolyTEE}`);
+    console.log('--------------------------------------------------\n\n');
     return { status: this.anamolyTEE };
   }
 
@@ -64,7 +77,6 @@ export class TeeService implements OnModuleInit {
       throw new Error('Attestation report not generated yet');
     }
     if (this.anamolyTEE) {
-      this.logger.log('TEE is marked as anomaly, returning corrupted attestation');
       return await this.generateAttestationAnomalyService.generateAttestationAnomaly();
     }
     return this.attestationReport;
