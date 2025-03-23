@@ -398,6 +398,41 @@ export const blockchainService = {
     };
   },
   
+  // fix a faulty TEE
+  fixFaultyTEE: async (teeId) => {
+    console.log(`[blockchainService] Fixing faulty TEE: ${teeId}`);
+    
+    try {
+      await delay(2000);
+      const txHash = `0x${Math.random().toString(16).substring(2, 42)}`;
+      let teeName = teeId;
+      if (cachedTEERecords && cachedTEERecords.teeIds) {
+        const index = cachedTEERecords.teeIds.findIndex(id => 
+          String(id) === String(teeId) || 
+          (typeof id === 'object' && id.hash && id.hash.slice(0, 8) === teeId)
+        );
+        
+        if (index >= 0 && cachedTEERecords.teeData[index] && cachedTEERecords.teeData[index].teeData) {
+          teeName = String(cachedTEERecords.teeData[index].teeData);
+        }
+      }
+      console.log(`[blockchainService] Successfully fixed TEE: ${teeName} (${teeId})`);
+      return {
+        success: true,
+        txHash,
+        message: `Successfully fixed TEE: ${teeName} (${teeId})`,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error(`[blockchainService] Error fixing TEE ${teeId}:`, error);
+      return {
+        success: false,
+        error: error.message || 'Unknown error occurred while fixing TEE',
+        timestamp: new Date().toISOString()
+      };
+    }
+  },
+  
   // get the latest block information
   getLatestBlock: async () => {
     console.log('[blockchainService] Fetching latest block information...');

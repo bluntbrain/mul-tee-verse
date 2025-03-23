@@ -191,7 +191,7 @@ const HackButton = styled.div`
 `;
 
 const HackTrigger = styled.button`
-  background-color: #FF4444;
+  background-color: ${props => props.isFixing ? '#33CC66' : '#FF4444'};
   color: white;
   font-weight: bold;
   padding: 6px 12px;
@@ -202,7 +202,7 @@ const HackTrigger = styled.button`
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5);
 
   &:hover {
-    background-color: #FF6666;
+    background-color: ${props => props.isFixing ? '#4FDD7E' : '#FF6666'};
   }
 `;
 
@@ -338,6 +338,9 @@ const CountdownTimer = ({ onCountdownComplete, lastRefreshTime, isLoading }) => 
   );
 };
 
+// helper function for delaying operations
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 function App() {
   const [latestBlock, setLatestBlock] = useState(null);
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
@@ -348,6 +351,8 @@ function App() {
   const [lastRefresh, setLastRefresh] = useState(Date.now());
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [hackingStatus, setHackingStatus] = useState('');
+  const [fixSuccess, setFixSuccess] = useState(false);
+  const [hackedTEE, setHackedTEE] = useState(null);
   const dropdownRef = useRef(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const logViewerRef = useRef(null);
@@ -654,35 +659,73 @@ function App() {
     };
   }, [dropdownRef]);
   
-  // function to hack a TEE
+  // function to hack or fix a TEE depending on state
   const hackTEE = async (teeId) => {
-    console.log(`[App.js] Attempting to hack TEE: ${teeId}`);
-    setHackingStatus(`Hacking ${teeId}...`);
     setIsDropdownOpen(false);
+    setFixSuccess(false);
     
+    // if the TEE is already hacked, we're fixing it
+    const isFixing = hackedTEE === teeId;
+    
+    if (isFixing) {
+      console.log(`[App.js] Attempting to fix faulty TEE: ${teeId}`);
+      setHackingStatus(`Fixing ${teeId}...`);
+      
+      try {
+        // call the blockchainService fixFaultyTEE function
+        const result = await blockchainService.fixFaultyTEE(teeId);
+        console.log(`[App.js] Fix response:`, result);
+        
+        if (result.success) {
+          setHackingStatus(`Fixed successfully: ${teeId}!`);
+          setFixSuccess(true);
+          setHackedTEE(null); // reset the hacked state
+        } else {
+          throw new Error(result.error || 'Failed to fix TEE');
+        }
+      } catch (error) {
+        console.log(`[App.js] Simulating successful fix for ${teeId} (API call result: ${error.message})`);
+        // for demo purposes, we'll still show success
+        setHackingStatus(`Fixed successfully: ${teeId}! (Simulated)`);
+        setFixSuccess(true);
+        setHackedTEE(null); // reset the hacked state
+      }
+    } else {
+      // we're hacking the TEE
+      console.log(`[App.js] Attempting to hack TEE: ${teeId}`);
+      setHackingStatus(`Hacking ${teeId}...`);
+      
+      try {
+        // for demo, simulate a successful hack with a delay
+        await delay(1500);
+        
+        setHackingStatus(`Successfully hacked ${teeId}! Select it again to fix.`);
+        setHackedTEE(teeId);
+      } catch (error) {
+        console.log(`[App.js] Error hacking TEE: ${error.message}`);
+        setHackingStatus(`Error hacking ${teeId}`);
+      }
+    }
+    
+    // for both operations, make the API call to toggle status
     try {
-      // make a dummy GET API call to the hack endpoint
-      const response = await fetch(`${HACK_TEE_API_ENDPOINT}?teeId=${teeId}`, {
+      const apiResponse = await fetch(`${HACK_TEE_API_ENDPOINT}?teeId=${teeId}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
         },
       });
       
-      // this will fail since it's a dummy URL, but in a real app we'd handle the response
-      const result = await response.json();
-      console.log(`[App.js] Hack response:`, result);
-      setHackingStatus(`Hack successful for ${teeId}!`);
-      
-      // refresh graph data to show updated status
-      refreshGraphData();
-      
-    } catch (error) {
-      console.log(`[App.js] Simulating successful hack for ${teeId} (API call failed as expected)`);
-      // for demo purposes, we'll still show success
-      setHackingStatus(`Hack successful for ${teeId}! (Simulated)`);
-      
-      // simulate delayed status clearing
+      console.log(`[App.js] API toggle response:`, apiResponse);
+    } catch (apiError) {
+      console.warn(`[App.js] API call error (continuing anyway):`, apiError);
+    }
+    
+    // refresh graph data to show updated status
+    refreshGraphData();
+    
+    // clear status message after a delay (except when a TEE is hacked)
+    if (!isFixing || fixSuccess) {
       setTimeout(() => {
         setHackingStatus('');
       }, 3000);
@@ -754,15 +797,25 @@ function App() {
           </Canvas>
           
           <HackButton ref={dropdownRef}>
-            <HackTrigger onClick={() => setIsDropdownOpen(!isDropdownOpen)}>
-              Hack TEE
+            <HackTrigger 
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)} 
+              isFixing={hackedTEE !== null}
+            >
+              {hackedTEE ? "Fix the faulty TEE" : "Hack TEE"}
             </HackTrigger>
             <DropdownContent isOpen={isDropdownOpen}>
-              <DropdownHeader>Select TEE to Hack</DropdownHeader>
+              <DropdownHeader>Select TEE to {hackedTEE ? "Fix" : "Hack"}</DropdownHeader>
               {graphData.nodes && graphData.nodes.length > 0 ? (
                 graphData.nodes.map(node => (
-                  <DropdownItem key={node.id} onClick={() => hackTEE(node.id)}>
-                    {node.name || node.id} ({node.status})
+                  <DropdownItem 
+                    key={node.id} 
+                    onClick={() => hackTEE(node.id)}
+                    style={{
+                      backgroundColor: hackedTEE === node.id ? 'rgba(255, 0, 0, 0.2)' : 'transparent'
+                    }}
+                  >
+                    {node.name || node.id} ({node.status}) 
+                    {hackedTEE === node.id && " - HACKED"}
                   </DropdownItem>
                 ))
               ) : (
